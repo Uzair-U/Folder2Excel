@@ -29,8 +29,29 @@ dropArea.addEventListener('drop', handleDrop, false);
 
 function handleDrop(e) {
   const dt = e.dataTransfer;
-  const files = dt.files;
-  processFiles(files);
+  const items = dt.items;
+
+  if (items && items.length > 0) {
+    const entry = items[0].webkitGetAsEntry();
+    if (entry && entry.isDirectory) {
+      // We have a directory; read its immediate contents
+      readDirectoryOnce(entry).then(files => {
+        fileList = files;
+        if (fileList.length > 0) {
+          generateBtn.disabled = false;
+          statusEl.textContent = `Loaded ${fileList.length} files from folder.`;
+        } else {
+          statusEl.textContent = "Folder is empty or no files found.";
+        }
+      }).catch(err => {
+        console.error(err);
+        statusEl.textContent = "Error reading folder contents.";
+      });
+    } else {
+      // Not a directory, just process as usual
+      processFiles(dt.files);
+    }
+  }
 }
 
 folderInput.addEventListener('change', () => {
@@ -44,6 +65,34 @@ function processFiles(files) {
     generateBtn.disabled = false;
     statusEl.textContent = `Loaded ${fileList.length} files.`;
   }
+}
+
+// Read immediate contents of a directory (no recursion)
+function readDirectoryOnce(dirEntry) {
+  let reader = dirEntry.createReader();
+  return new Promise((resolve, reject) => {
+    reader.readEntries(async entries => {
+      try {
+        const files = [];
+        for (const entry of entries) {
+          if (entry.isFile) {
+            const fileObj = await getFile(entry);
+            files.push(fileObj.file.name);
+          }
+        }
+        resolve(files);
+      } catch (err) {
+        reject(err);
+      }
+    }, reject);
+  });
+}
+
+// Convert a fileEntry to a File object
+function getFile(fileEntry) {
+  return new Promise((resolve, reject) => {
+    fileEntry.file(file => resolve({ file }), reject);
+  });
 }
 
 // Generate Excel file on button click
