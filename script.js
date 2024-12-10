@@ -35,13 +35,13 @@ function handleDrop(e) {
     const entry = items[0].webkitGetAsEntry();
     if (entry && entry.isDirectory) {
       // We have a directory; read its immediate contents
-      readDirectoryOnce(entry).then(files => {
+      readDirectoryContents(entry).then(files => {
         fileList = files;
         if (fileList.length > 0) {
           generateBtn.disabled = false;
           statusEl.textContent = `Loaded ${fileList.length} files from folder.`;
         } else {
-          statusEl.textContent = "Folder is empty or no files found.";
+          statusEl.textContent = "No files found in the dropped folder.";
         }
       }).catch(err => {
         console.error(err);
@@ -67,31 +67,45 @@ function processFiles(files) {
   }
 }
 
-// Read immediate contents of a directory (no recursion)
-function readDirectoryOnce(dirEntry) {
-  let reader = dirEntry.createReader();
-  return new Promise((resolve, reject) => {
-    reader.readEntries(async entries => {
-      try {
-        const files = [];
-        for (const entry of entries) {
-          if (entry.isFile) {
-            const fileObj = await getFile(entry);
-            files.push(fileObj.file.name);
-          }
+/**
+ * Read the immediate files in a directory (no recursion).
+ * Continues calling readEntries() until no more entries are returned.
+ * Only files are collected.
+ */
+function readDirectoryContents(dirEntry) {
+  const reader = dirEntry.createReader();
+  const allEntries = [];
+
+  function readAllEntries() {
+    return new Promise((resolve, reject) => {
+      reader.readEntries(entries => {
+        if (entries.length === 0) {
+          resolve();
+        } else {
+          allEntries.push(...entries);
+          // Keep reading until no entries
+          readAllEntries().then(resolve).catch(reject);
         }
-        resolve(files);
-      } catch (err) {
-        reject(err);
+      }, reject);
+    });
+  }
+
+  return readAllEntries().then(async () => {
+    const files = [];
+    for (const entry of allEntries) {
+      if (entry.isFile) {
+        const fileObj = await getFile(entry);
+        files.push(fileObj.name);
       }
-    }, reject);
+    }
+    return files;
   });
 }
 
 // Convert a fileEntry to a File object
 function getFile(fileEntry) {
   return new Promise((resolve, reject) => {
-    fileEntry.file(file => resolve({ file }), reject);
+    fileEntry.file(file => resolve(file), reject);
   });
 }
 
